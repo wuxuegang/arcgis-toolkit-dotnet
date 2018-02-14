@@ -15,8 +15,11 @@
 //  ******************************************************************************/
 
 using CoreGraphics;
+using Foundation;
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Threading;
 using UIKit;
 
 namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
@@ -26,7 +29,7 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
     public partial class LayerLegend : IComponent
     {
         private UIStackView _rootStackView;
-
+        private UITableView _listView;        
 #pragma warning disable SA1642 // Constructor summary documentation must begin with standard text
         /// <summary>
         /// Internal use only.  Invoked by the Xamarin iOS designer.
@@ -57,7 +60,7 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
             // At run-time, don't display the sub-views until their dimensions have been calculated
             if (!DesignTime.IsDesignMode)
                 Hidden = true;
-            
+
             _rootStackView = new UIStackView()
             {
                 Axis = UILayoutConstraintAxis.Vertical,
@@ -67,45 +70,36 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
                 Spacing = 0
             };
 
-            // TODO
+            _listView = new UITableView(UIScreen.MainScreen.Bounds)
+            {
+               
+                TranslatesAutoresizingMaskIntoConstraints = false,
+                AutoresizingMask = UIViewAutoresizing.All,
+                RowHeight = UITableView.AutomaticDimension,
+                EstimatedRowHeight = 40,
+            };
+            _listView.RegisterClassForCellReuse(typeof(LayerLegendItemCell), LayerLegendTableSource.CellId);
+            _rootStackView.AddSubview(_listView);
 
             AddSubview(_rootStackView);
 
-            // Anchor the root stack view to the bottom left of the view
-            _rootStackView.LeadingAnchor.ConstraintEqualTo(LeadingAnchor).Active = true;
-            _rootStackView.BottomAnchor.ConstraintEqualTo(BottomAnchor).Active = true;
-            
+            _listView.LeadingAnchor.ConstraintEqualTo(LeadingAnchor).Active = true;
+            _listView.TopAnchor.ConstraintEqualTo(TopAnchor).Active = true;
+            _listView.TrailingAnchor.ConstraintEqualTo(TrailingAnchor).Active = true;
+            _listView.BottomAnchor.ConstraintEqualTo(BottomAnchor).Active = true;
+
             InvalidateIntrinsicContentSize();
         }
 
-        private void Refresh()
-        {
-            // TODO
-        }
-        
-        private bool _isSizeValid = false;
 
         /// <inheritdoc />
         public override void InvalidateIntrinsicContentSize()
         {
-            _isSizeValid = false;
             base.InvalidateIntrinsicContentSize();
         }
 
-        private CGSize _intrinsicContentSize;
         /// <inheritdoc />
-        public override CGSize IntrinsicContentSize
-        {
-            get
-            {
-                if (!_isSizeValid)
-                {
-                    _isSizeValid = true;
-                    _intrinsicContentSize = MeasureSize();
-                }
-                return _intrinsicContentSize;
-            }
-        }
+        public override CGSize IntrinsicContentSize => Bounds.Size;
 
         /// <inheritdoc />
         public override CGSize SizeThatFits(CGSize size)
@@ -131,40 +125,43 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
             remove { _disposed -= value; }
         }
 
-        private void SetVisibility(bool isVisible)
+        private void Refresh()
         {
-            Hidden = !isVisible;
-        }
-
-        /// <summary>
-        /// Aggregates the size of the view's sub-views
-        /// </summary>
-        /// <returns>The size of the view</returns>
-        private CGSize MeasureSize()
-        {
-            var totalHeight = 0d;
-            var totalWidth = 0d;
-            foreach (var row in _rootStackView.ArrangedSubviews)
+            if (_listView == null)
             {
-                var rowWidth = 0d;
-                var rowHeight = 0d;
-                foreach (var view in ((UIStackView)row).ArrangedSubviews)
-                {
-                    var elementSize = view.IntrinsicContentSize;
-                    if (elementSize.Height > rowHeight)
-                    {
-                        rowHeight = elementSize.Height;
-                    }
-                    rowWidth += elementSize.Width;
-                }
-                if (rowWidth > totalWidth)
-                {
-                    totalWidth = rowWidth;
-                }
-                totalHeight += rowHeight;
+                return;
             }
 
-            return new CGSize(totalWidth, totalHeight);
+            if (LayerContent == null)
+            {
+                _listView.Source = null;
+                return;
+            }
+
+            if (LayerContent is ILoadable)
+            {
+                if ((LayerContent as ILoadable).LoadStatus != LoadStatus.Loaded)
+                {
+                    (LayerContent as ILoadable).Loaded += Layer_loaded;
+                    (LayerContent as ILoadable).LoadAsync();
+                    return;
+                }
+            }
+
+            var items = new ObservableCollection<LayerLegendInfo>();
+            LoadRecursive(items, LayerContent, ShowEntireTreeHierarchy);
+            var source = new LayerLegendTableSource(items);
+            _listView.Source = source;
+            _listView.ReloadData();
+            source.CollectionChanged += (a, b) => InvokeOnMainThread(() => _listView.ReloadData());
+            Hidden = false;
+            InvalidateIntrinsicContentSize();
+        }
+        
+        private void Layer_loaded(object sender, EventArgs e)
+        {
+            (sender as ILoadable).Loaded -= Layer_loaded;
+            InvokeOnMainThread(() => Refresh());
         }
     }
 }

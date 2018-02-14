@@ -5,13 +5,15 @@
 // Manual changes to this file will not be maintained.
 //
 using Foundation;
+using System;
+using System.CodeDom.Compiler;
 
 namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
 {
-    [Register("Legend")]
+    [Register ("Legend")]
     partial class Legend
     {
-        void ReleaseDesignerOutlets()
+        void ReleaseDesignerOutlets ()
         {
         }
     }

@@ -15,16 +15,19 @@
 //  ******************************************************************************/
 
 using CoreGraphics;
+using Esri.ArcGISRuntime.UI.Controls;
 using System;
 using System.ComponentModel;
 using UIKit;
 
 namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
 {
+    [DisplayName("LayerList")]
+    [Category("ArcGIS Runtime Controls")]
     public partial class LayerList : IComponent
     {
         private UIStackView _rootStackView;
-
+        private UITableView _listView;
 #pragma warning disable SA1642 // Constructor summary documentation must begin with standard text
         /// <summary>
         /// Internal use only.  Invoked by the Xamarin iOS designer.
@@ -32,7 +35,7 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
         /// <param name="handle">A platform-specific type that is used to represent a pointer or a handle.</param>
 #pragma warning restore SA1642 // Constructor summary documentation must begin with standard text
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public LayerList(IntPtr handle) : base(handle)
+        internal LayerList(IntPtr handle) : base(handle)
         {
             Initialize();
         }
@@ -48,7 +51,7 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
             base.AwakeFromNib();
         }
 
-        internal void Initialize()
+        private void Initialize()
         {
             BackgroundColor = UIColor.Clear;
 
@@ -65,45 +68,36 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
                 Spacing = 0
             };
 
-            // TODO
+            _listView = new UITableView(UIScreen.MainScreen.Bounds)
+            {
+
+                TranslatesAutoresizingMaskIntoConstraints = false,
+                AutoresizingMask = UIViewAutoresizing.All,
+                RowHeight = UITableView.AutomaticDimension,
+                EstimatedRowHeight = 40,
+            };
+            _listView.RegisterClassForCellReuse(typeof(LegendItemCell), LegendTableSource.CellId);
+            _rootStackView.AddSubview(_listView);
 
             AddSubview(_rootStackView);
 
-            // Anchor the root stack view to the bottom left of the view
-            _rootStackView.LeadingAnchor.ConstraintEqualTo(LeadingAnchor).Active = true;
-            _rootStackView.BottomAnchor.ConstraintEqualTo(BottomAnchor).Active = true;
+            _listView.LeadingAnchor.ConstraintEqualTo(LeadingAnchor).Active = true;
+            _listView.TopAnchor.ConstraintEqualTo(TopAnchor).Active = true;
+            _listView.TrailingAnchor.ConstraintEqualTo(TrailingAnchor).Active = true;
+            _listView.BottomAnchor.ConstraintEqualTo(BottomAnchor).Active = true;
 
             InvalidateIntrinsicContentSize();
         }
 
-        internal void Refresh()
-        {
-            // TODO
-        }
-
-        private bool _isSizeValid = false;
 
         /// <inheritdoc />
         public override void InvalidateIntrinsicContentSize()
         {
-            _isSizeValid = false;
             base.InvalidateIntrinsicContentSize();
         }
 
-        private CGSize _intrinsicContentSize;
         /// <inheritdoc />
-        public override CGSize IntrinsicContentSize
-        {
-            get
-            {
-                if (!_isSizeValid)
-                {
-                    _isSizeValid = true;
-                    _intrinsicContentSize = MeasureSize();
-                }
-                return _intrinsicContentSize;
-            }
-        }
+        public override CGSize IntrinsicContentSize => Bounds.Size;
 
         /// <inheritdoc />
         public override CGSize SizeThatFits(CGSize size)
@@ -129,40 +123,61 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
             remove { _disposed -= value; }
         }
 
-        private void SetVisibility(bool isVisible)
+        private void Refresh()
         {
-            Hidden = !isVisible;
-        }
-
-        /// <summary>
-        /// Aggregates the size of the view's sub-views
-        /// </summary>
-        /// <returns>The size of the view</returns>
-        private CGSize MeasureSize()
-        {
-            var totalHeight = 0d;
-            var totalWidth = 0d;
-            foreach (var row in _rootStackView.ArrangedSubviews)
+            if (_listView == null)
             {
-                var rowWidth = 0d;
-                var rowHeight = 0d;
-                foreach (var view in ((UIStackView)row).ArrangedSubviews)
-                {
-                    var elementSize = view.IntrinsicContentSize;
-                    if (elementSize.Height > rowHeight)
-                    {
-                        rowHeight = elementSize.Height;
-                    }
-                    rowWidth += elementSize.Width;
-                }
-                if (rowWidth > totalWidth)
-                {
-                    totalWidth = rowWidth;
-                }
-                totalHeight += rowHeight;
+                return;
             }
 
-            return new CGSize(totalWidth, totalHeight);
+            if ((GeoView as MapView)?.Map == null && (GeoView as SceneView)?.Scene == null)
+            {
+                _listView.Source = null;
+                return;
+            }
+
+            ObservableLayerContentList layers = null;
+            if (GeoView is MapView)
+            {
+                layers = new ObservableLayerContentList(GeoView as MapView, ShowLegendInternal)
+                {
+                    ReverseOrder = !ReverseLayerOrder
+                };
+            }
+            else if (GeoView is SceneView)
+            {
+                layers = new ObservableLayerContentList(GeoView as MapView, ShowLegendInternal)
+                {
+                    ReverseOrder = !ReverseLayerOrder
+                };
+            }
+
+            if(layers == null)
+            {
+                _listView.Source = null;
+                return;
+            }
+            foreach(var l in layers)
+            {
+                if(!(l.LayerContent is Mapping.Layer))
+                {
+                    continue;
+                }
+                var layer = l.LayerContent as Mapping.Layer;
+                if(layer.LoadStatus == LoadStatus.Loaded)
+                {
+                    l.UpdateLayerViewState(GeoView.GetLayerViewState(layer));
+                }
+            }
+
+            ScaleChanged();
+            SetLayerContentList(layers);
+            var source = new LegendTableSource(layers);
+            _listView.Source = source;
+            _listView.ReloadData();
+            source.CollectionChanged += (a, b) => InvokeOnMainThread(() => _listView.ReloadData());
+            Hidden = false;
+            InvalidateIntrinsicContentSize();
         }
     }
 }

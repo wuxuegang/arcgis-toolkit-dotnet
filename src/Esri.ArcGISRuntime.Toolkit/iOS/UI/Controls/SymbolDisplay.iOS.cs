@@ -15,18 +15,19 @@
 //  ******************************************************************************/
 
 using CoreGraphics;
+using Esri.ArcGISRuntime.UI;
 using System;
 using System.ComponentModel;
 using UIKit;
 
 namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
 {
-
     [DisplayName("SymbolDisplay")]
     [Category("ArcGIS Runtime Controls")]
     public partial class SymbolDisplay : IComponent
     {
         private UIStackView _rootStackView;
+        private UIImageView _imageView;
 
 #pragma warning disable SA1642 // Constructor summary documentation must begin with standard text
         /// <summary>
@@ -68,45 +69,30 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
                 Spacing = 0
             };
 
-            // TODO
+            _imageView = new UIImageView()
+            {
+                ContentMode = UIViewContentMode.ScaleAspectFit
+            };
+            _rootStackView.AddArrangedSubview(_imageView);
+
 
             AddSubview(_rootStackView);
 
-            // Anchor the root stack view to the bottom left of the view
             _rootStackView.LeadingAnchor.ConstraintEqualTo(LeadingAnchor).Active = true;
-            _rootStackView.BottomAnchor.ConstraintEqualTo(BottomAnchor).Active = true;
+            _rootStackView.TopAnchor.ConstraintEqualTo(TopAnchor).Active = true;
 
             InvalidateIntrinsicContentSize();
         }
 
-        private async void Refresh()
-        { 
-            // TODO
-        }
-
-        private bool _isSizeValid = false;
-
         /// <inheritdoc />
         public override void InvalidateIntrinsicContentSize()
         {
-            _isSizeValid = false;
             base.InvalidateIntrinsicContentSize();
         }
 
         private CGSize _intrinsicContentSize;
         /// <inheritdoc />
-        public override CGSize IntrinsicContentSize
-        {
-            get
-            {
-                if (!_isSizeValid)
-                {
-                    _isSizeValid = true;
-                    _intrinsicContentSize = MeasureSize();
-                }
-                return _intrinsicContentSize;
-            }
-        }
+        public override CGSize IntrinsicContentSize => _intrinsicContentSize;
 
         /// <inheritdoc />
         public override CGSize SizeThatFits(CGSize size)
@@ -137,36 +123,41 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
             Hidden = !isVisible;
         }
 
-        /// <summary>
-        /// Aggregates the size of the view's sub-views
-        /// </summary>
-        /// <returns>The size of the view</returns>
-        private CGSize MeasureSize()
+        private async void Refresh()
         {
-            var totalHeight = 0d;
-            var totalWidth = 0d;
-            foreach (var row in _rootStackView.ArrangedSubviews)
+            if (_imageView == null)
             {
-                var rowWidth = 0d;
-                var rowHeight = 0d;
-                foreach (var view in ((UIStackView)row).ArrangedSubviews)
-                {
-                    var elementSize = view.IntrinsicContentSize;
-                    if (elementSize.Height > rowHeight)
-                    {
-                        rowHeight = elementSize.Height;
-                    }
-                    rowWidth += elementSize.Width;
-                }
-                if (rowWidth > totalWidth)
-                {
-                    totalWidth = rowWidth;
-                }
-                totalHeight += rowHeight;
+                return;
             }
 
-            return new CGSize(totalWidth, totalHeight);
+            if (Symbol == null)
+            {
+                _imageView.Image = null;
+                return;
+            }
+
+#pragma warning disable ESRI1800 // Add ConfigureAwait(false) - This is UI Dependent code and must return to UI Thread
+            try
+            {
+                var scale = GetScaleFactor();
+                var imageData = await Symbol.CreateSwatchAsync(scale * 96);
+                var width = (int)(imageData.Width / scale);
+                var height = (int)(imageData.Height / scale);
+                _imageView.Image = await imageData.ToImageSourceAsync();
+                _intrinsicContentSize = new CGSize(Math.Min(width, 40), Math.Min(height, 40));
+                Hidden = false;
+                InvalidateIntrinsicContentSize();
+            }
+            catch
+            {
+                _imageView.Image = null;
+            }
+#pragma warning restore ESRI1800
         }
 
+        private static double GetScaleFactor()
+        {
+            return UIScreen.MainScreen.Scale;
+        }
     }
 }

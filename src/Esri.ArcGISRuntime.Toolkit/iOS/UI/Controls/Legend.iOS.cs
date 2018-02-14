@@ -23,7 +23,6 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
     [Category("ArcGIS Runtime Controls")]
     public partial class Legend : LayerList
     {
-
 #pragma warning disable SA1642 // Constructor summary documentation must begin with standard text
         /// <summary>
         /// Internal use only.  Invoked by the Xamarin iOS designer.
@@ -33,7 +32,6 @@ namespace Esri.ArcGISRuntime.Toolkit.UI.Controls
         [EditorBrowsable(EditorBrowsableState.Never)]
         public Legend(IntPtr handle) : base(handle)
         {
-            Initialize();
         }
     }
 }
